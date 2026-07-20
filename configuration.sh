@@ -10,9 +10,6 @@ CLIENT_PORT=${CLIENT_PORT:-3000}
 read -p "Enter HASURA_PORT [8080]: " HASURA_PORT
 HASURA_PORT=${HASURA_PORT:-8080}
 
-read -p "Enter POSTGRES_PORT [5432]: " POSTGRES_PORT
-POSTGRES_PORT=${POSTGRES_PORT:-5432}
-
 read -p "Enter DOCKER_HOST_IP [127.0.0.1]: " DOCKER_HOST_IP
 DOCKER_HOST_IP=${DOCKER_HOST_IP:-127.0.0.1}
 
@@ -23,10 +20,18 @@ if [ -z "$DOMAIN" ]; then
   exit 1
 fi
 
+# Prompt for the external PostgreSQL connection string, required input.
+# This instance uses an existing PostgreSQL server rather than a bundled container.
+# Example: postgres://cleanslate:PASSWORD@100.107.217.126:5432/cleanslate
+read -rp "Enter HASURA_GRAPHQL_DATABASE_URL: " DATABASE_URL
+if [ -z "$DATABASE_URL" ]; then
+  echo "Error: HASURA_GRAPHQL_DATABASE_URL is required."
+  exit 1
+fi
+
 # Generate UUIDs
 JWT_SECRET=$(uuidgen)
 HASURA_ADMIN_SECRET=$(uuidgen)
-POSTGRES_PASSWORD=$(uuidgen)
 
 # Write to .env file
 cat <<EOF > .env
@@ -35,71 +40,10 @@ CLIENT_PORT=$CLIENT_PORT
 DOCKER_HOST_IP=$DOCKER_HOST_IP
 DOMAIN=$DOMAIN
 HASURA_GRAPHQL_ADMIN_SECRET=$HASURA_ADMIN_SECRET
+HASURA_GRAPHQL_DATABASE_URL=$DATABASE_URL
 HASURA_GRAPHQL_JWT_SECRET='{"type":"HS256","key":"$JWT_SECRET"}'
 HASURA_PORT=$HASURA_PORT
 JWT_SIGNING_SECRET=$JWT_SECRET
-POSTGRES_PASSWORD=$POSTGRES_PASSWORD
-POSTGRES_PORT=$POSTGRES_PORT
 EOF
 
-cat <<EOF > Caddyfile
-$DOMAIN {
-	header /* {
-		Referrer-Policy "strict-origin"
-		Strict-Transport-Security "max-age=31536000; includeSubDomains;"
-		X-Content-Type-Options "nosniff"
-		X-Frame-Options "DENY"
-		X-XSS-Protection "0"
-		Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://apis.google.com https://www.google.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; connect-src 'self' *.ingest.sentry.io https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://apis.google.com https://world.openfoodfacts.org; frame-src 'self' *.firebaseapp.com https://www.google.com; img-src 'self' https://www.gstatic.com data:; font-src 'self' https://fonts.gstatic.com https://fonts.googleapis.com; worker-src 'self'; object-src 'none';"
-		Permissions-Policy "accelerometer=(self), autoplay=(self), camera=(self), cross-origin-isolated=(self), display-capture=(self), encrypted-media=(self), fullscreen=(self), geolocation=(self), gyroscope=(self), keyboard-map=(self), magnetometer=(self), microphone=(self), midi=(self), payment=(self), picture-in-picture=(self), publickey-credentials-get=(self), screen-wake-lock=(self), sync-xhr=(self), usb=(self), xr-spatial-tracking=(self)"
-	}
-
-	header /console* {
-		-Content-Security-Policy
-	}
-
-	route /v1* {
-		# API (Hasura)
-		reverse_proxy localhost:$HASURA_PORT {
-			header_up -X-Hasura-Role
-		}
-	}
-
-	route /v2* {
-		# API (Hasura)
-		reverse_proxy localhost:$HASURA_PORT {
-			header_up -X-Hasura-Role
-		}
-	}
-
-	route /console* {
-		# Admin panel (Hasura)
-		reverse_proxy localhost:$HASURA_PORT {
-			header_up -X-Hasura-Role
-		}
-	}
-
-	route /healthz {
-		# Health check (Hasura)
-		reverse_proxy localhost:$HASURA_PORT {
-			header_up -X-Hasura-Role
-		}
-	}
-
-	route /auth* {
-		# Authentication server (Express.js)
-		reverse_proxy localhost:$AUTH_PORT {
-			header_up -X-Hasura-Role
-		}
-	}
-
-	route /* {
-		# Static files (Client)
-		reverse_proxy localhost:$CLIENT_PORT {
-			header_up -X-Hasura-Role
-		}
-	}
-}
-EOF
-
-echo ".env file and Caddyfile generated!"
+echo ".env file generated!"

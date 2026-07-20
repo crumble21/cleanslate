@@ -16,6 +16,9 @@ services:
       HASURA_GRAPHQL_JWT_SECRET: ${HASURA_GRAPHQL_JWT_SECRET}
     extra_hosts:
       - 'host.docker.internal:host-gateway'
+    networks:
+      - default
+      - newt
 
   authentication-server:
     image: ghcr.io/successible/cleanslate/authentication-server:latest
@@ -35,6 +38,9 @@ services:
       - graphql-server
     extra_hosts:
       - 'host.docker.internal:host-gateway'
+    networks:
+      - default
+      - newt
 
   client:
     image: ghcr.io/successible/cleanslate/client:latest
@@ -60,3 +66,14 @@ services:
       - graphql-server
     extra_hosts:
       - 'host.docker.internal:host-gateway'
+    networks:
+      - default
+      - newt
+
+# The `newt` network is the external bridge created by your Newt container's
+# compose project (docker network name: newt_default). Attaching these services
+# to it lets Pangolin's Newt agent reach them by container name.
+networks:
+  newt:
+    external: true
+    name: newt_default
